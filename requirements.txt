@@ -1,0 +1,3 @@
+numpy
+cython
+git+https://github.com/mikeboers/PyAV.git
