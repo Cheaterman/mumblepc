@@ -4,9 +4,7 @@ from av.audio.resampler import AudioResampler
 from pymumble_py3 import Mumble
 from pymumble_py3.constants import PYMUMBLE_CLBK_TEXTMESSAGERECEIVED
 import av
-import io
 import os
-import subprocess
 import sys
 import time
 
