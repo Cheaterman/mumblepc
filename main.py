@@ -5,12 +5,14 @@ from pymumble_py3 import Mumble
 from pymumble_py3.constants import PYMUMBLE_CLBK_TEXTMESSAGERECEIVED
 import av
 import io
+import os
 import subprocess
 import sys
 import time
 
 
 CHUNK_SIZE = 1024
+PATH = os.path.abspath(os.path.dirname(sys.argv[0]))
 
 mumble_address, mumble_port, radio_address = sys.argv[1:]
 
@@ -39,8 +41,8 @@ client = Mumble(
     mumble_address,
     'MumblePC',
     int(mumble_port),
-    certfile='mumblepc_cert.pem',
-    keyfile='mumblepc_key.pem',
+    certfile=os.path.join(PATH, 'mumblepc_cert.pem'),
+    keyfile=os.path.join(PATH, 'mumblepc_key.pem'),
     reconnect=True,
 )
 client.set_codec_profile('audio')
