@@ -2,19 +2,52 @@
 
 from av.audio.resampler import AudioResampler
 from pymumble_py3 import Mumble
+from pymumble_py3.constants import PYMUMBLE_CLBK_TEXTMESSAGERECEIVED
 import av
 import io
 import subprocess
 import sys
+import time
 
 
 CHUNK_SIZE = 1024
 
 mumble_address, mumble_port, radio_address = sys.argv[1:]
 
-client = Mumble(mumble_address, 'MumblePC', int(mumble_port))
+
+def on_text(message):
+    command = message.message
+
+    if not command.startswith('!'):
+        return
+
+    author = client.users[message.actor]
+
+    if command == '!status':
+        return author.send_message(
+            'Buffer size: %f<br>'
+            'Last chunk time: %f' % (
+                client.sound_output.get_buffer_size(),
+                (time.time() - last_chunk_time) if last_chunk_time else 0
+            )
+        )
+
+    author.send_message('Unknown command "%s"' % command)
+
+
+client = Mumble(
+    mumble_address,
+    'MumblePC',
+    int(mumble_port),
+    certfile='mumblepc_cert.pem',
+    keyfile='mumblepc_key.pem',
+    reconnect=True,
+)
+client.set_codec_profile('audio')
 client.start()
 client.is_ready()
+client.set_bandwidth(200 * 1000)
+client.callbacks.add_callback(PYMUMBLE_CLBK_TEXTMESSAGERECEIVED, on_text)
 
 container = av.open(radio_address)
 stream = next(
@@ -22,6 +55,7 @@ stream = next(
 )
 resampler = AudioResampler('s16p', 1, 48000)
 
+last_chunk_time = None
 quit = False
 
 while not quit:
@@ -31,4 +65,6 @@ while not quit:
             frame = resampler.resample(frame)
             rawchunk = frame.to_nd_array().tobytes()
             client.sound_output.add_sound(rawchunk)
+            last_chunk_time = time.time()
+
     quit = True
