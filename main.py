@@ -1,70 +1,44 @@
 #!/usr/bin/env python3
 
-from av.audio.resampler import AudioResampler
-from pymumble_py3 import Mumble
-from pymumble_py3.constants import PYMUMBLE_CLBK_TEXTMESSAGERECEIVED
-import av
+import argparse
 import os
-import sys
-import time
+from mumblepc import MumblePC
 
 
-CHUNK_SIZE = 1024
-PATH = os.path.abspath(os.path.dirname(sys.argv[0]))
-
-mumble_address, mumble_port, radio_address = sys.argv[1:]
-
-
-def on_text(message):
-    command = message.message
-
-    if not command.startswith('!'):
-        return
-
-    author = client.users[message.actor]
-
-    if command == '!status':
-        return author.send_message(
-            'Buffer size: %f<br>'
-            'Last chunk time: %f' % (
-                client.sound_output.get_buffer_size(),
-                (time.time() - last_chunk_time) if last_chunk_time else 0
-            )
-        )
-
-    author.send_message('Unknown command "%s"' % command)
-
-
-client = Mumble(
-    mumble_address,
-    'MumblePC',
-    int(mumble_port),
-    certfile=os.path.join(PATH, 'mumblepc_cert.pem'),
-    keyfile=os.path.join(PATH, 'mumblepc_key.pem'),
-    reconnect=True,
+parser = argparse.ArgumentParser(
+    description='Mumble Player Client, a Mumble radio bot.'
 )
-client.set_codec_profile('audio')
-client.start()
-client.is_ready()
-client.set_bandwidth(200 * 1000)
-client.callbacks.add_callback(PYMUMBLE_CLBK_TEXTMESSAGERECEIVED, on_text)
-
-container = av.open(radio_address)
-stream = next(
-    stream for stream in container.streams if stream.type == 'audio'
+parser.add_argument(
+    'address',
+    help='Mumble server address'
 )
-resampler = AudioResampler('s16p', 1, 48000)
+parser.add_argument(
+    'port',
+    type=int,
+    help='Mumble server port'
+)
+parser.add_argument(
+    '--radio-address',
+    help='URL of a radio stream to play when connected',
+)
+args = parser.parse_args()
 
-last_chunk_time = None
-quit = False
+PATH = os.path.abspath(os.path.dirname(__file__))
 
-while not quit:
-    for packet in container.demux(stream):
-        for frame in packet.decode():
-            frame.pts = None
-            frame = resampler.resample(frame)
-            rawchunk = frame.to_nd_array().tobytes()
-            client.sound_output.add_sound(rawchunk)
-            last_chunk_time = time.time()
+certs = {}
 
-    quit = True
+for certfile in ('cert', 'key'):
+    target = os.path.join(PATH, 'mumblepc_%s.pem' % certfile)
+    certs[certfile] = target if os.path.exists(target) else None
+
+bot = MumblePC(
+    address=args.address,
+    port=args.port,
+    certfile=certs['cert'],
+    keyfile=certs['key'],
+)
+
+if args.radio_address:
+    bot.play(args.radio_address)
+
+bot.run()
