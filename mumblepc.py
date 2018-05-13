@@ -5,6 +5,7 @@ import av
 import cgi
 import re
 import time
+import youtube_dl
 
 
 commands = {}
@@ -20,6 +21,16 @@ _html_stripper_regexp = re.compile(r'(<!--.*?-->|<[^>]*>)')
 
 def _strip_html(text):
     return cgi.escape(_html_stripper_regexp.sub('', text))
+
+
+def _get_yt_url(url):
+    with youtube_dl.YoutubeDL() as ytdl:
+        data = ytdl.extract_info(url, download=False)
+
+    _, format_id = data['format_id'].split('+')
+    for format in data['formats']:
+        if format['format_id'] == format_id:
+            return format['url']
 
 
 class MumblePC(object):
@@ -40,7 +51,6 @@ class MumblePC(object):
             PYMUMBLE_CLBK_TEXTMESSAGERECEIVED,
             self.on_text
         )
-        self._resampler = AudioResampler('s16p', 1, 48000)
         self._stream = None
         self.last_chunk_time = None
         self.quit = False
@@ -74,11 +84,18 @@ class MumblePC(object):
         stream = next(
             stream for stream in container.streams if stream.type == 'audio'
         )
+        if not stream:
+            return
         self._stream = (container, stream)
+        self._resampler = AudioResampler('s16p', 1, 48000)
 
     @command
     def stop(self, sender):
         self._stream = None
+
+    @command
+    def youtube(self, address, sender):
+        self.play(_get_yt_url(address))
 
     @command
     def status(self, sender):
@@ -101,9 +118,17 @@ class MumblePC(object):
         while self.client.sound_output.get_buffer_size() < .1:
             packet = next(container.demux(stream))
 
-            for frame in packet.decode():
+            try:
+                framelist = packet.decode()
+            except av.AVError:
+                self._stream = None
+                break
+
+            for frame in framelist:
                 frame.pts = None
+
                 frame = resample(frame)
+
                 self.client.sound_output.add_sound(
                     frame.to_nd_array().tobytes()
                 )
